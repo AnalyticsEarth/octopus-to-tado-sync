@@ -2,6 +2,7 @@ import argparse
 import requests
 from requests.auth import HTTPBasicAuth
 from PyTado.interface import Tado
+from datetime import datetime
 
 
 def get_meter_reading_total_consumption(api_key, mprn, gas_serial_number):
@@ -10,6 +11,7 @@ def get_meter_reading_total_consumption(api_key, mprn, gas_serial_number):
     """
     url = f"https://api.octopus.energy/v1/gas-meter-points/{mprn}/meters/{gas_serial_number}/consumption/?group_by=quarter"
     total_consumption = 0.0
+    max_date = datetime.min
 
     while url:
         response = requests.get(
@@ -18,6 +20,10 @@ def get_meter_reading_total_consumption(api_key, mprn, gas_serial_number):
 
         if response.status_code == 200:
             meter_readings = response.json()
+            print(meter_readings)
+            max_date = max(max_date,max(
+                datetime.strptime(interval["interval_end"],'%Y-%m-%dT%H:%M:%SZ') for interval in meter_readings["results"]
+            ))
             total_consumption += sum(
                 interval["consumption"] for interval in meter_readings["results"]
             )
@@ -28,8 +34,9 @@ def get_meter_reading_total_consumption(api_key, mprn, gas_serial_number):
             )
             break
 
+    print(f"Latest Date is {max_date}")
     print(f"Total consumption is {total_consumption}")
-    return total_consumption
+    return max_date, total_consumption
 
 
 def send_reading_to_tado(username, password, reading):
@@ -37,7 +44,12 @@ def send_reading_to_tado(username, password, reading):
     Sends the total consumption reading to Tado using its Energy IQ feature.
     """
     tado = Tado(username, password)
-    result = tado.set_eiq_meter_readings(reading=int(reading))
+    print(reading)
+    max_date = reading[0].date().strftime('%Y-%m-%d')
+    consumption = int(reading[1])
+    print(max_date)
+    print(consumption)
+    result = tado.set_eiq_meter_readings(date=max_date, reading=consumption)
     print(result)
 
 
